@@ -1,7 +1,6 @@
-const mariadb = require("mariadb");
-
 module.exports = async function check({ host, port, username, password, database }) {
-  const connection = await mariadb.createConnection({
+  const mariadb = await import("mariadb");
+  const connection = await mariadb.default.createConnection({
     host,
     port,
     user: username,

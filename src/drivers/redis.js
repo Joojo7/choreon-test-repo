@@ -10,6 +10,8 @@ module.exports = async function check({ host, port, username, password }) {
     lazyConnect: true,
   });
 
+  client.on("error", () => {});
+
   try {
     await client.connect();
     const info = await client.info("server");

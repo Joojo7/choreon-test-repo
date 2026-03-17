@@ -1,7 +1,16 @@
 const express = require("express");
 const router = express.Router();
 
-const VALID_TYPES = ["postgres", "mysql", "mariadb", "mongodb", "redis", "opensearch"];
+const drivers = {
+  postgres: require("./drivers/postgres"),
+  mysql: require("./drivers/mysql"),
+  mariadb: require("./drivers/mariadb"),
+  mongodb: require("./drivers/mongodb"),
+  redis: require("./drivers/redis"),
+  opensearch: require("./drivers/opensearch"),
+};
+
+const VALID_TYPES = Object.keys(drivers);
 
 const REQUIRED_ENV_VARS = {
   postgres: ["DS_HOST", "DS_PORT", "DS_NAME", "DS_USERNAME", "DS_PASSWORD"],
@@ -51,8 +60,7 @@ router.get("/:datastoreName", async (req, res) => {
   };
 
   try {
-    const driver = require(`./drivers/${type}`);
-    const result = await driver(config);
+    const result = await drivers[type](config);
     res.json({
       status: "connected",
       datastore: datastoreName,
