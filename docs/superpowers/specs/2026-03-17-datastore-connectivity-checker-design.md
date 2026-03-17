@@ -11,15 +11,15 @@ A simple Node.js HTTP service that verifies connectivity to any Choreon-managed 
 Checks connectivity to a datastore by reading env vars based on the datastore name.
 
 **Parameters:**
-- `:datastoreName` — name of the datastore (used to resolve env vars)
-- `?type` — one of: `postgres`, `mysql`, `mariadb`, `mongodb`, `redis`, `opensearch`
+- `:datastoreName` — name of the datastore (used to resolve env vars). Hyphens and other non-alphanumeric characters are converted to underscores before env var lookup (e.g., `my-db` → `MY_DB_DS_HOST`).
+- `?type` (required) — one of: `postgres`, `mysql`, `mariadb`, `mongodb`, `redis`, `opensearch`
 
-**Env var resolution:** Uppercases `datastoreName` and reads:
-- `{NAME}_DS_HOST` — hostname
-- `{NAME}_DS_PORT` — port
-- `{NAME}_DS_NAME` — database name
-- `{NAME}_DS_USERNAME` — username
-- `{NAME}_DS_PASSWORD` — password
+**Env var resolution:** Uppercases `datastoreName`, replaces non-alphanumeric chars with `_`, then reads:
+- `{NAME}_DS_HOST` — hostname (required for all types)
+- `{NAME}_DS_PORT` — port (required for all types)
+- `{NAME}_DS_NAME` — database name (required for postgres, mysql, mariadb, mongodb; ignored for redis, opensearch)
+- `{NAME}_DS_USERNAME` — username (required for postgres, mysql, mariadb, mongodb; optional for redis, opensearch)
+- `{NAME}_DS_PASSWORD` — password (required for postgres, mysql, mariadb, mongodb; optional for redis, opensearch)
 
 **Success response (200):**
 ```json
@@ -28,6 +28,16 @@ Checks connectivity to a datastore by reading env vars based on the datastore na
   "datastore": "mydb",
   "type": "postgres",
   "details": { "version": "16.1" }
+}
+```
+
+**Missing/invalid type (400):**
+```json
+{
+  "status": "error",
+  "datastore": "mydb",
+  "type": "unknown",
+  "error": "Invalid type. Must be one of: postgres, mysql, mariadb, mongodb, redis, opensearch"
 }
 ```
 
@@ -83,25 +93,29 @@ Each driver module exports a single function:
 async function check({ host, port, username, password, database }) → { version: string }
 ```
 
-The function connects, queries the version, disconnects, and returns. No persistent connection pools. 5-second connection timeout for all drivers.
+The `database` parameter is optional — Redis and OpenSearch drivers ignore it. The function connects, queries the version, disconnects, and returns. No persistent connection pools. 5-second connection timeout for all drivers.
 
-### Version Queries by Type
+### Connection Details by Type
 
-| Type | Query | Library |
-|------|-------|---------|
-| postgres | `SELECT version()` | `pg` |
-| mysql | `SELECT version()` | `mysql2` |
-| mariadb | `SELECT version()` | `mariadb` |
-| mongodb | `db.admin().serverInfo()` | `mongodb` |
-| redis | `INFO server` → parse `redis_version` | `ioredis` |
-| opensearch | `GET /` → `version.number` | `@opensearch-project/opensearch` |
+| Type | Connection Method | Version Query | Library |
+|------|-------------------|---------------|---------|
+| postgres | `new Client({ host, port, user, password, database })` | `SELECT version()` | `pg` |
+| mysql | `createConnection({ host, port, user, password, database })` | `SELECT version()` | `mysql2` |
+| mariadb | `createConnection({ host, port, user, password, database })` | `SELECT version()` | `mariadb` |
+| mongodb | `mongodb://user:pass@host:port/db?authSource=admin&directConnection=true` | `db.admin().serverInfo()` | `mongodb` |
+| redis | `new Redis({ host, port, password })` — no username/database needed | `INFO server` → parse `redis_version` | `ioredis` |
+| opensearch | `https://host:port` with basic auth, TLS `rejectUnauthorized: false` | `GET /` → `version.number` | `@opensearch-project/opensearch` |
+
+**OpenSearch TLS note:** OpenSearch typically runs with self-signed certs in Choreon clusters. The driver uses HTTPS with `rejectUnauthorized: false` to handle this.
+
+**MongoDB connection string:** Assembled from individual env vars as `mongodb://username:password@host:port/database?authSource=admin&directConnection=true`. `directConnection=true` ensures it works with both standalone and replica set deployments.
 
 ### Route Handler Flow
 
 1. Extract `datastoreName` from URL params, `type` from query string
-2. Validate `type` is one of the supported types
-3. Uppercase `datastoreName`, read env vars
-4. If any required env var is missing, return 400 with list of missing vars
+2. Validate `type` is one of the supported types; return 400 if missing or invalid
+3. Uppercase `datastoreName`, replace non-alphanumeric chars with `_`, read env vars
+4. Check required env vars for the given type; return 400 with list of missing vars
 5. Call the appropriate driver's `check()` function
 6. Return success or error response
 
