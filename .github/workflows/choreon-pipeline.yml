@@ -1,0 +1,36 @@
+name: "Choreon - Pipeline"
+
+on:
+  push:
+    branches:
+      - "master"
+
+jobs:
+  deploy:
+    name: Deploy Service into Choreon
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      
+      - name: Setup Buildpacks Tools
+        id: setup-tools
+        uses: buildpacks/github-actions/setup-tools@v5.1.0
+      
+      - name: Setup Pack
+        id: setup-pack
+        uses: buildpacks/github-actions/setup-pack@v5.1.0
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y curl
+          curl -fsSL https://public.choreon.dev/artifacts/choreon-cli/install.sh | bash
+
+      - name: Deploy
+        env:
+          CHOREON_TOKEN: ${{ secrets.CHOREON_TOKEN }}
+          CHOREON_SANDBOX: ${{ secrets.CHOREON_SANDBOX }}
+        run: choreon service deploy
