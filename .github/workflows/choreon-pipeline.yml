@@ -3,7 +3,7 @@ name: "Choreon - Pipeline"
 on:
   push:
     branches:
-      - "master"
+      - "choreon-setup-1773800416717"
 
 jobs:
   deploy:
