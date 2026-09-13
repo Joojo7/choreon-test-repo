@@ -66,6 +66,39 @@ jobs:
           command -v choreon-stg
           choreon-stg --version
 
+      - name: Inspect CHOREON_TOKEN claims (diagnostic)
+        env:
+          CHOREON_TOKEN: ${{ secrets.CHOREON_TOKEN }}
+        # Decodes the JWT payload with python (always on the runner) and
+        # prints ONLY safe structural fields so we can confirm what the
+        # token grants without leaking the token itself or PII. Answers
+        # the question: does this CI token carry projectIds/organizationId
+        # claims the way the design assumes?
+        run: |
+          python3 - <<'PY'
+          import base64, json, os
+          tok = os.environ['CHOREON_TOKEN']
+          parts = tok.split('.')
+          if len(parts) < 2:
+              print('CHOREON_TOKEN is not a JWT (no dot-separated payload).')
+              raise SystemExit(0)
+          payload = parts[1] + '=' * (-len(parts[1]) % 4)
+          data = json.loads(base64.urlsafe_b64decode(payload))
+          safe = {
+              'organizationId': data.get('organizationId'),
+              'projectIds': data.get('projectIds'),
+              'projectIds_count': len(data.get('projectIds') or []),
+              'type': data.get('type'),
+              'gitProvider': data.get('gitProvider'),
+              'has_email': bool(data.get('email')),
+              'has_userId': bool(data.get('userId')),
+              'has_teamId': bool(data.get('teamId')),
+              'has_containerRegistry': bool(data.get('containerRegistry')),
+              'top_level_keys': sorted(data.keys()),
+          }
+          print(json.dumps(safe, indent=2))
+          PY
+
       - name: Deploy
         env:
           CHOREON_TOKEN: ${{ secrets.CHOREON_TOKEN }}
