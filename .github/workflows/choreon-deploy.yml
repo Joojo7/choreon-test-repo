@@ -50,6 +50,12 @@ jobs:
         run: |
           sudo apt-get update -y && sudo apt-get install -y curl
           curl -fsSL https://public.choreon.dev/artifacts/choreon-cli/choreonx-staging/install-stg-latest.sh | bash
+          # TEMPORARY — remove once PR #21 (choreonx#21) is merged and
+          # cli-stg-latest.yml has republished install-stg-latest.sh.
+          # PR #21 makes the installer append $HOME/.choreon/bin to
+          # $GITHUB_PATH itself; until it lands, we do it here so the
+          # next step can find choreon-stg on PATH.
+          echo "$HOME/.choreon/bin" >> "$GITHUB_PATH"
 
       - name: Sanity check — CLI on PATH, version resolves
         # Belt-and-braces: confirms that PR #21's $GITHUB_PATH extension
