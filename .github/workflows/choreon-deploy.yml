@@ -1,0 +1,60 @@
+# TEST-ONLY WORKFLOW.
+#
+# Mirrors the pipeline shape that choreon-api's `github.hbs` template
+# renders into every customer repo, with three deliberate deltas:
+#
+#   1. Install URL points at the new choreonx CLI (stg-latest), not the
+#      legacy Go CLI. Once this pipeline goes green end-to-end here,
+#      the same swap lands in choreon-api's template PR.
+#   2. Binary is `choreon-stg` (baked BASE_URL = api-stg.choreon.dev).
+#      The prd flavor will be `choreon` again once cli-release.yml has
+#      cut its first prd release; for validation-before-template-flip
+#      the stg binary is the right target.
+#   3. Trigger is workflow_dispatch, not push-to-main, so this test
+#      repo doesn't fire a deploy on every incidental commit.
+#
+# Everything else — buildpacks setup, apt install curl, the env vars,
+# the deploy call — is a byte-for-byte copy of the template so that
+# passing here is a real signal for the template flip.
+
+name: Choreon Deploy (choreonx stg-latest — test)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Service into Choreon
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Buildpacks Tools
+        id: setup-tools
+        uses: buildpacks/github-actions/setup-tools@v5.1.0
+
+      - name: Setup Pack
+        id: setup-pack
+        uses: buildpacks/github-actions/setup-pack@v5.1.0
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y curl
+          curl -fsSL https://public.choreon.dev/artifacts/choreon-cli/choreonx-staging/install-stg-latest.sh | bash
+
+      - name: Sanity check — CLI on PATH, version resolves
+        # Belt-and-braces: confirms that PR #21's $GITHUB_PATH extension
+        # actually made choreon-stg discoverable to this step's fresh
+        # shell before we call `deploy`. If this step 127s, the deploy
+        # step will too — but with a clearer error message here.
+        run: |
+          command -v choreon-stg
+          choreon-stg --version
+
+      - name: Deploy
+        env:
+          CHOREON_TOKEN: ${{ secrets.CHOREON_TOKEN }}
+          CHOREON_SANDBOX: ${{ secrets.CHOREON_SANDBOX }}
+        run: choreon-stg service deploy
