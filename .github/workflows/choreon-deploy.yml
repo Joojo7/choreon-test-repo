@@ -70,4 +70,9 @@ jobs:
         env:
           CHOREON_TOKEN: ${{ secrets.CHOREON_TOKEN }}
           CHOREON_SANDBOX: ${{ secrets.CHOREON_SANDBOX }}
-        run: choreon-stg service deploy
+        # Explicit --id sourced from this repo's .choreon file (targets[0].id).
+        # The Go CLI resolves this automatically from .choreon; choreonx's
+        # `service deploy` doesn't read that file yet — a separate gap to
+        # close before flipping the choreon-api customer template, so the
+        # bare-argument `choreon service deploy` pattern keeps working.
+        run: choreon-stg service deploy --id 30294a5d-d5cd-4305-baaf-834a97c1ab7c
