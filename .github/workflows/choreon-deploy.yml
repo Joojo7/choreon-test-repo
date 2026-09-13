@@ -20,6 +20,13 @@
 name: Choreon Deploy (choreonx stg-latest — test)
 
 on:
+  # Fires on push to the test branch so we can validate the pipeline
+  # end-to-end without needing this workflow on the default branch
+  # (workflow_dispatch requires that). Once the choreon-api template
+  # PR flips the customer-facing pipeline, this whole file goes away.
+  push:
+    branches:
+      - 'test/choreonx-pipeline'
   workflow_dispatch:
 
 jobs:
