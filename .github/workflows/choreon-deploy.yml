@@ -77,26 +77,55 @@ jobs:
         run: |
           python3 - <<'PY'
           import base64, json, os
+
+          def decode_jwt_payload(jwt):
+              parts = jwt.split('.')
+              if len(parts) < 2:
+                  return None
+              seg = parts[1] + '=' * (-len(parts[1]) % 4)
+              return json.loads(base64.urlsafe_b64decode(seg))
+
+          def summarize(data, label):
+              print(f'\n=== {label} JWT claims ===')
+              print(json.dumps({
+                  'organizationId': data.get('organizationId'),
+                  'projectIds': data.get('projectIds'),
+                  'projectIds_count': len(data.get('projectIds') or []),
+                  'type': data.get('type'),
+                  'gitProvider': data.get('gitProvider'),
+                  'has_email': bool(data.get('email')),
+                  'email_prefix': (data.get('email') or '').split('@')[0][:20] + '...',
+                  'has_userId': bool(data.get('userId')),
+                  'has_teamId': bool(data.get('teamId')),
+                  'has_containerRegistry': bool(data.get('containerRegistry')),
+                  'top_level_keys': sorted(data.keys()),
+              }, indent=2))
+
           tok = os.environ['CHOREON_TOKEN']
-          parts = tok.split('.')
-          if len(parts) < 2:
-              print('CHOREON_TOKEN is not a JWT (no dot-separated payload).')
+          # Try direct JWT first
+          direct = decode_jwt_payload(tok)
+          if direct is not None:
+              print('CHOREON_TOKEN parsed as a raw JWT.')
+              summarize(direct, 'direct')
               raise SystemExit(0)
-          payload = parts[1] + '=' * (-len(parts[1]) % 4)
-          data = json.loads(base64.urlsafe_b64decode(payload))
-          safe = {
-              'organizationId': data.get('organizationId'),
-              'projectIds': data.get('projectIds'),
-              'projectIds_count': len(data.get('projectIds') or []),
-              'type': data.get('type'),
-              'gitProvider': data.get('gitProvider'),
-              'has_email': bool(data.get('email')),
-              'has_userId': bool(data.get('userId')),
-              'has_teamId': bool(data.get('teamId')),
-              'has_containerRegistry': bool(data.get('containerRegistry')),
-              'top_level_keys': sorted(data.keys()),
-          }
-          print(json.dumps(safe, indent=2))
+
+          # Fall back to base64(JSON({accessToken, refreshToken})) — the
+          # actual wire format the choreon-api service.ts:665 writes.
+          try:
+              unwrapped = json.loads(base64.b64decode(tok))
+          except Exception as e:
+              print(f'CHOREON_TOKEN is neither a raw JWT nor base64(JSON): {e}')
+              raise SystemExit(0)
+          print('CHOREON_TOKEN is base64(JSON) — unwrapping.')
+          print(f'wrapped keys: {sorted(unwrapped.keys())}')
+          if 'accessToken' in unwrapped:
+              at = decode_jwt_payload(unwrapped['accessToken'])
+              if at:
+                  summarize(at, 'accessToken')
+          if 'refreshToken' in unwrapped:
+              rt = decode_jwt_payload(unwrapped['refreshToken'])
+              if rt:
+                  summarize(rt, 'refreshToken')
           PY
 
       - name: Deploy
