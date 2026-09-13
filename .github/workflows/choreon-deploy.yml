@@ -66,17 +66,23 @@ jobs:
           command -v choreon-stg
           choreon-stg --version
 
-      - name: Inspect CHOREON_TOKEN claims (diagnostic)
+      - name: Bootstrap CLI config from CI token
         env:
           CHOREON_TOKEN: ${{ secrets.CHOREON_TOKEN }}
-        # Decodes the JWT payload with python (always on the runner) and
-        # prints ONLY safe structural fields so we can confirm what the
-        # token grants without leaking the token itself or PII. Answers
-        # the question: does this CI token carry projectIds/organizationId
-        # claims the way the design assumes?
+        # Simulates the eventual `choreon pipeline deploy` bootstrap in
+        # the current CLI: unwrap the base64(JSON) CI token, extract the
+        # accessToken/refreshToken JWTs, and write ~/.choreon/config.json
+        # under the `stg` env slot. Once that's on disk, `service deploy`
+        # resolves projectId from the JWT's projectIds[0] claim.
+        #
+        # In the future PR this whole step disappears — `pipeline deploy`
+        # does the unwrap in-process, no on-disk config needed for CI.
+        # For the drill it's the shortest path to a real deploy with the
+        # honest resolution chain (project from token, service from flag
+        # which future PR will read from .choreon).
         run: |
           python3 - <<'PY'
-          import base64, json, os
+          import base64, json, os, pathlib
 
           def decode_jwt_payload(jwt):
               parts = jwt.split('.')
@@ -85,47 +91,27 @@ jobs:
               seg = parts[1] + '=' * (-len(parts[1]) % 4)
               return json.loads(base64.urlsafe_b64decode(seg))
 
-          def summarize(data, label):
-              print(f'\n=== {label} JWT claims ===')
-              print(json.dumps({
-                  'organizationId': data.get('organizationId'),
-                  'projectIds': data.get('projectIds'),
-                  'projectIds_count': len(data.get('projectIds') or []),
-                  'type': data.get('type'),
-                  'gitProvider': data.get('gitProvider'),
-                  'has_email': bool(data.get('email')),
-                  'email_prefix': (data.get('email') or '').split('@')[0][:20] + '...',
-                  'has_userId': bool(data.get('userId')),
-                  'has_teamId': bool(data.get('teamId')),
-                  'has_containerRegistry': bool(data.get('containerRegistry')),
-                  'top_level_keys': sorted(data.keys()),
-              }, indent=2))
-
           tok = os.environ['CHOREON_TOKEN']
-          # Try direct JWT first
-          direct = decode_jwt_payload(tok)
-          if direct is not None:
-              print('CHOREON_TOKEN parsed as a raw JWT.')
-              summarize(direct, 'direct')
-              raise SystemExit(0)
+          unwrapped = json.loads(base64.b64decode(tok))
+          at, rt = unwrapped['accessToken'], unwrapped['refreshToken']
 
-          # Fall back to base64(JSON({accessToken, refreshToken})) — the
-          # actual wire format the choreon-api service.ts:665 writes.
-          try:
-              unwrapped = json.loads(base64.b64decode(tok))
-          except Exception as e:
-              print(f'CHOREON_TOKEN is neither a raw JWT nor base64(JSON): {e}')
-              raise SystemExit(0)
-          print('CHOREON_TOKEN is base64(JSON) — unwrapping.')
-          print(f'wrapped keys: {sorted(unwrapped.keys())}')
-          if 'accessToken' in unwrapped:
-              at = decode_jwt_payload(unwrapped['accessToken'])
-              if at:
-                  summarize(at, 'accessToken')
-          if 'refreshToken' in unwrapped:
-              rt = decode_jwt_payload(unwrapped['refreshToken'])
-              if rt:
-                  summarize(rt, 'refreshToken')
+          # Sanity-log the claims (no PII, no secrets).
+          claims = decode_jwt_payload(at)
+          print('accessToken claims summary:')
+          print(json.dumps({
+              'organizationId': claims.get('organizationId'),
+              'projectIds': claims.get('projectIds'),
+              'type': claims.get('type'),
+              'gitProvider': claims.get('gitProvider'),
+          }, indent=2))
+
+          # Write ~/.choreon/config.json in the shape config-service reads.
+          cfg = { 'envs': { 'stg': { 'token': at, 'refreshToken': rt } } }
+          cfg_path = pathlib.Path.home() / '.choreon' / 'config.json'
+          cfg_path.parent.mkdir(parents=True, exist_ok=True)
+          cfg_path.write_text(json.dumps(cfg))
+          cfg_path.chmod(0o600)
+          print(f'wrote {cfg_path} (mode 600)')
           PY
 
       - name: Deploy
