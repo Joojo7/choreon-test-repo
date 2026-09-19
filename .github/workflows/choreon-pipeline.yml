@@ -27,10 +27,10 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update -y && sudo apt-get install -y curl
-          curl -fsSL https://public.choreon.dev/artifacts/choreon-cli/install.sh | bash
+          curl -fsSL https://public.choreon.dev/artifacts/choreon-cli/choreonx/install.sh | bash
 
       - name: Deploy
         env:
           CHOREON_TOKEN: ${{ secrets.CHOREON_TOKEN }}
           CHOREON_SANDBOX: ${{ secrets.CHOREON_SANDBOX }}
-        run: choreon service deploy
+        run: choreon pipeline deploy
