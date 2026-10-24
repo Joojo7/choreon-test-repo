@@ -24,20 +24,13 @@ jobs:
         id: setup-pack
         uses: buildpacks/github-actions/setup-pack@v5.1.0
 
-      # The choreonx installer refuses to run on Node < 22.
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Install Dependencies
         run: |
           sudo apt-get update -y && sudo apt-get install -y curl
-          curl -fsSL https://public.choreon.dev/artifacts/choreon-cli/choreonx-staging/install-stg-latest.sh -o /tmp/choreon-install.sh
-          bash /tmp/choreon-install.sh
+          curl -fsSL https://public.choreon.dev/artifacts/choreon-cli/install.sh | bash
 
       - name: Deploy
         env:
           CHOREON_TOKEN: ${{ secrets.CHOREON_TOKEN }}
           CHOREON_SANDBOX: ${{ secrets.CHOREON_SANDBOX }}
-        run: choreon-stg pipeline deploy
+        run: choreon service deploy
