@@ -13,8 +13,8 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
   .card { background: var(--card); border-radius: 10px; padding: 14px 16px; }
   .wide { grid-column: 1 / -1; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
-  dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: .9em; }
+  dl { display: grid; grid-template-columns: 10.5em minmax(0, 1fr); gap: 6px 14px; margin: 0; }
+  dt { color: var(--muted); overflow-wrap: anywhere; } dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: .9em; }
   table { border-collapse: collapse; width: 100%; font-size: .88em; }
   th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid rgba(127,127,127,.25); vertical-align: top; }
   td.mono, th.mono { font-family: ui-monospace, monospace; overflow-wrap: anywhere; } td.mono:first-child { white-space: nowrap; }
@@ -46,7 +46,8 @@
   <section class="card"><h2>Information</h2><dl id="information"></dl></section>
   <section class="card"><h2>Source / Build</h2><dl id="build"></dl></section>
   <section class="card"><h2>Deployment Configuration</h2><dl id="deploy"></dl></section>
-  <section class="card"><h2>Request as seen by the pod</h2><dl id="request"></dl></section>
+  <section class="card wide"><h2>Request as seen by the pod</h2><dl id="request"></dl>
+    <table style="margin-top:10px"><thead><tr><th>Forwarded header</th><th>Value</th></tr></thead><tbody id="fwd"></tbody></table></section>
 
   <section class="card wide">
     <h2>Health endpoints</h2>
@@ -116,9 +117,9 @@
       ['host', d.request.host],
       ['protocol', d.request.protocol],
       ['client ip', d.request.clientIp],
-      ['authorization header present', d.request.hasAuthorizationHeader ? 'yes (basic protection)' : 'no'],
-      ['forwarded headers', Object.entries(d.request.forwardedHeaders).map(([k, v]) => `${k}=${v}`).join('  ')],
+      ['authorization header', d.request.hasAuthorizationHeader ? 'present (basic protection)' : 'absent'],
     ]);
+    $('fwd').innerHTML = Object.entries(d.request.forwardedHeaders).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td class="mono">${esc(v)}</td></tr>`).join('') || '<tr><td colspan="2"><small>none</small></td></tr>';
     $('raw').textContent = JSON.stringify(d, null, 2);
     return d;
   }
