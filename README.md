@@ -8,11 +8,20 @@ entered actually reached the running service.
 No framework beyond Express and no build step. Works with Buildpacks and with
 either of the two Dockerfiles.
 
+## Status page
+
+Open the service's host in a browser. The page at `/` reads `/info`, `/env`
+and the health paths and shows one card per wizard step: build method and
+Dockerfile, startup command, limits, hostname, request headers, env vars
+(masked unless revealed), live health badges and buttons that send CPU or
+memory load so you can watch the hostname change as instances scale. Turn on
+auto-refresh while testing Max Instance Count.
+
 ## Endpoints
 
 | Endpoint | What it shows |
 |---|---|
-| `GET /` | Index of endpoints |
+| `GET /` | **Status page** in a browser (cards for every wizard step, live health probes, env table, load buttons). JSON index for curl/scripts |
 | `GET /health` (also `/healthz`, `/ready`, `/live`, or whatever `HEALTH_PATHS` says) | Health check target |
 | `GET /info` | Build method and Dockerfile used, startup command, pod hostname, Node version, CPU/memory limits the container sees, request headers forwarded by the gateway |
 | `GET /env` | Every env var. Names containing PASSWORD/SECRET/TOKEN/KEY are masked but reported with length and a SHA-256 prefix. `?reveal=1` unmasks. Choreon-injected (`DS_*`, `CHOREON_*`) are listed separately |
@@ -117,7 +126,7 @@ src/health.js         HEALTH_PATHS parsing
 src/load.js           bounded CPU / memory load
 src/variant.json      per-branch marker
 src/check.js          datastore checker (unchanged behaviour)
-src/public/           cors-tester.html
+src/public/           index.html (status page), cors-tester.html
 test/*.test.js        npm test
 test/fail/            npm run test:fail
 fixtures/upload-test.env

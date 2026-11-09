@@ -59,3 +59,15 @@ test("/info exposes build, startup and limits sections", async () => {
     assert.equal(info.variant.label, "baseline");
   });
 });
+
+test("/ serves the status page to browsers and JSON to scripts", async () => {
+  await withServer(async (base) => {
+    const html = await fetch(base + "/", { headers: { accept: "text/html,*/*;q=0.8" } });
+    assert.equal(html.status, 200);
+    assert.match(html.headers.get("content-type"), /text\/html/);
+    assert.match(await html.text(), /Choreon Test Service/);
+    const json = await fetch(base + "/", { headers: { accept: "application/json" } });
+    assert.match(json.headers.get("content-type"), /application\/json/);
+    assert.equal((await json.json()).name, "choreon-test-repo");
+  });
+});

@@ -27,10 +27,19 @@ for (const healthPath of HEALTH_PATHS) {
 }
 
 // --- Everything at a glance --------------------------------------------------
+// Browsers get the status page; curl and scripts keep the JSON index.
+app.get("/", (req, res, next) => {
+  if (req.accepts(["json", "html"]) === "html") {
+    return res.sendFile(path.join(__dirname, "public", "index.html"));
+  }
+  next();
+});
+
 app.get("/", (req, res) => {
   res.json({
     name: "choreon-test-repo",
     endpoints: {
+      "/ (browser)": "status page visualising everything below",
       "/info": "build, startup command, limits, request headers",
       "/env": "all env vars (secret-looking values masked); ?reveal=1 to unmask",
       "/env/:name": "one env var",
