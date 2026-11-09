@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choreon Test Service</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; --card: rgba(127,127,127,.12); --ok: #1a7f37; --bad: #cf222e; --muted: rgba(127,127,127,.9); }
+  body { margin: 0; padding: 16px; max-width: 1100px; margin-inline: auto; line-height: 1.4; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  h1 { font-size: 1.25rem; margin: 0; }
+  h2 { font-size: .95rem; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border-radius: 10px; padding: 14px 16px; }
+  .wide { grid-column: 1 / -1; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+  dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: .9em; }
+  table { border-collapse: collapse; width: 100%; font-size: .88em; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid rgba(127,127,127,.25); vertical-align: top; }
+  td.mono, th.mono { font-family: ui-monospace, monospace; overflow-wrap: anywhere; } td.mono:first-child { white-space: nowrap; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .8em; color: #fff; background: var(--muted); }
+  .badge.ok { background: var(--ok); } .badge.bad { background: var(--bad); }
+  .tag { font-size: .75em; padding: 1px 6px; border-radius: 4px; background: rgba(127,127,127,.25); }
+  button, input[type=text] { font: inherit; padding: 6px 10px; }
+  button { cursor: pointer; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  pre { background: rgba(127,127,127,.15); padding: 10px; border-radius: 6px; overflow: auto; max-height: 260px; font-size: .85em; }
+  small { color: var(--muted); }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Choreon Test Service</h1>
+    <small id="subtitle">Loading…</small>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="auto"> auto-refresh 3 s</label>
+    <button id="refresh">Refresh</button>
+    <a href="/cors-tester">CORS tester</a>
+  </div>
+</header>
+
+<div class="grid">
+  <section class="card"><h2>Information</h2><dl id="information"></dl></section>
+  <section class="card"><h2>Source / Build</h2><dl id="build"></dl></section>
+  <section class="card"><h2>Deployment Configuration</h2><dl id="deploy"></dl></section>
+  <section class="card"><h2>Request as seen by the pod</h2><dl id="request"></dl></section>
+
+  <section class="card wide">
+    <h2>Health endpoints</h2>
+    <div class="row" id="health"></div>
+    <small>Each configured path is probed from this page. Add <code>HEALTH_PATHS=/a,/b</code> as an env var to change the list.</small>
+  </section>
+
+  <section class="card wide">
+    <h2>Environment variables <span class="tag" id="envcount"></span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <input type="text" id="envfilter" placeholder="filter by name…">
+      <label><input type="checkbox" id="reveal"> reveal masked values</label>
+      <label><input type="checkbox" id="showall"> show runtime/system vars</label>
+    </div>
+    <table><thead><tr><th>Name</th><th>Source</th><th>Value</th></tr></thead><tbody id="env"></tbody></table>
+  </section>
+
+  <section class="card wide">
+    <h2>Load (autoscaling)</h2>
+    <div class="row">
+      <button data-load="/load/cpu?seconds=20">Burn CPU 20 s</button>
+      <button data-load="/load/cpu?seconds=60">Burn CPU 60 s</button>
+      <button data-load="/load/memory?mib=128&seconds=60">Hold 128 MiB for 60 s</button>
+      <button id="burst">Fire 5 parallel CPU burns</button>
+      <small>Then watch <b>hostname</b> above with auto-refresh on. With Max Instance Count &gt; 1 you should see more than one.</small>
+    </div>
+    <pre id="loadlog">No load sent yet.</pre>
+  </section>
+
+  <section class="card wide">
+    <h2>Raw /info</h2>
+    <pre id="raw"></pre>
+  </section>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const dl = (el, rows) => { el.innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v == null || v === '' ? '<small>—</small>' : esc(v)}</dd>`).join(''); };
+
+  async function loadInfo() {
+    const r = await fetch('/info', { cache: 'no-store' });
+    const d = await r.json();
+    $('subtitle').textContent = `${d.service.hostname} · pid ${d.service.pid} · up ${d.service.uptimeSeconds}s · ${new Date().toLocaleTimeString()}`;
+    dl($('information'), [
+      ['hostname', d.service.hostname],
+      ['listening port', d.service.listeningPort],
+      ['health paths', (d.service.healthPaths || []).join(', ')],
+      ['variant (branch marker)', d.variant ? `${d.variant.label} (${d.variant.branch})` : null],
+      ['node', d.service.node],
+    ]);
+    dl($('build'), [
+      ['build method', d.build.method],
+      ['variant', d.build.variant],
+      ['dockerfile', d.build.dockerfile],
+      ['startup label (RUN command)', d.startup.label],
+      ['npm script', d.startup.npmScript],
+      ['argv', d.startup.argv.join(' ')],
+    ]);
+    dl($('deploy'), [
+      ['cpu limit', d.limits.cpuMillicores == null ? 'none' : `${d.limits.cpuMillicores} m`],
+      ['memory limit', d.limits.memoryMiB == null ? 'none' : `${d.limits.memoryMiB} MiB`],
+      ['cgroup', d.limits.cgroupVersion],
+      ['visible cpus', d.limits.visibleCpus],
+    ]);
+    dl($('request'), [
+      ['host', d.request.host],
+      ['protocol', d.request.protocol],
+      ['client ip', d.request.clientIp],
+      ['authorization header present', d.request.hasAuthorizationHeader ? 'yes (basic protection)' : 'no'],
+      ['forwarded headers', Object.entries(d.request.forwardedHeaders).map(([k, v]) => `${k}=${v}`).join('  ')],
+    ]);
+    $('raw').textContent = JSON.stringify(d, null, 2);
+    return d;
+  }
+
+  async function loadHealth(paths) {
+    const el = $('health'); el.innerHTML = '';
+    await Promise.all(paths.map(async (p) => {
+      let cls = 'bad', text = 'ERR';
+      try { const r = await fetch(p, { cache: 'no-store' }); text = r.status; cls = r.ok ? 'ok' : 'bad'; } catch {}
+      el.insertAdjacentHTML('beforeend', `<span><code>${esc(p)}</code> <span class="badge ${cls}">${text}</span></span>`);
+    }));
+  }
+
+  let envData = null;
+  async function loadEnv() {
+    const reveal = $('reveal').checked ? '?reveal=1' : '';
+    envData = await (await fetch('/env' + reveal, { cache: 'no-store' })).json();
+    renderEnv();
+  }
+  const SYSTEM = /^(PATH|HOME|HOSTNAME|PWD|SHLVL|TERM|NODE_VERSION|YARN_VERSION|LANG|npm_|_$|INIT_CWD|COLOR|EDITOR|OLDPWD|TMPDIR|USER|LOGNAME|SHELL|KUBERNETES_|.*_SERVICE_(HOST|PORT)|.*_PORT(_\d+_TCP.*)?$)/;
+  function renderEnv() {
+    if (!envData) return;
+    const q = $('envfilter').value.toLowerCase();
+    const showAll = $('showall').checked;
+    const rows = [...envData.choreonInjected, ...envData.userDefined]
+      .filter((e) => showAll || e.source === 'choreon' || !SYSTEM.test(e.name))
+      .filter((e) => !q || e.name.toLowerCase().includes(q));
+    $('envcount').textContent = `${rows.length} shown / ${envData.count} total`;
+    $('env').innerHTML = rows.map((e) => `<tr>
+      <td class="mono">${esc(e.name)}</td>
+      <td><span class="tag">${e.source === 'choreon' ? 'choreon' : 'user / runtime'}</span></td>
+      <td class="mono">${e.masked ? `<span class="tag">masked</span> len ${e.length} · sha256 ${esc(e.sha256Prefix)}…` : esc(e.value)}</td>
+    </tr>`).join('') || '<tr><td colspan="3"><small>nothing matches</small></td></tr>';
+  }
+
+  async function refreshAll() {
+    try {
+      const d = await loadInfo();
+      await Promise.all([loadHealth(d.service.healthPaths || []), loadEnv()]);
+    } catch (err) {
+      $('subtitle').textContent = `Failed to load: ${err.message}`;
+    }
+  }
+
+  async function sendLoad(url) {
+    const log = $('loadlog');
+    const t0 = performance.now();
+    log.textContent = `→ ${url}\n` + log.textContent;
+    try {
+      const d = await (await fetch(url, { cache: 'no-store' })).json();
+      log.textContent = `✔ ${url} answered by ${d.hostname} in ${Math.round(performance.now() - t0)} ms\n` + log.textContent;
+    } catch (err) {
+      log.textContent = `✘ ${url}: ${err.message}\n` + log.textContent;
+    }
+  }
+
+  document.querySelectorAll('button[data-load]').forEach((b) => b.addEventListener('click', () => sendLoad(b.dataset.load)));
+  $('burst').addEventListener('click', () => { for (let i = 0; i < 5; i++) sendLoad('/load/cpu?seconds=30'); });
+  $('refresh').addEventListener('click', refreshAll);
+  $('reveal').addEventListener('change', loadEnv);
+  $('showall').addEventListener('change', renderEnv);
+  $('envfilter').addEventListener('input', renderEnv);
+  let timer = null;
+  $('auto').addEventListener('change', (e) => { clearInterval(timer); if (e.target.checked) timer = setInterval(refreshAll, 3000); });
+  refreshAll();
+</script>
+</body>
+</html>
