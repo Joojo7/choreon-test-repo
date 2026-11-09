@@ -1,10 +1,13 @@
 {
-  "name": "choreon-datastore-checker",
-  "version": "1.0.0",
-  "description": "Verifies connectivity to Choreon-managed datastores",
+  "name": "choreon-test-repo",
+  "version": "2.0.0",
+  "description": "Exercises every field of the Choreon create-service wizard and verifies connectivity to Choreon-managed datastores",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "start:alt": "node src/index.js --label=alt-run-command",
+    "test": "node --test test/*.test.js",
+    "test:fail": "node --test test/fail/*.test.js"
   },
   "dependencies": {
     "express": "^4.21.0",
