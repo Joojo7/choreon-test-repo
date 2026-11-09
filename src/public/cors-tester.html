@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CORS Tester</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0; padding: 16px; max-width: 760px; margin-inline: auto; }
+  h1 { font-size: 1.25rem; }
+  label { display: block; margin-top: 12px; font-size: .9rem; }
+  input, select, textarea { width: 100%; box-sizing: border-box; padding: 8px; margin-top: 4px; font: inherit; }
+  button { margin-top: 16px; padding: 10px 16px; font: inherit; cursor: pointer; }
+  pre { background: rgba(127,127,127,.15); padding: 12px; overflow: auto; white-space: pre-wrap; }
+  .ok { color: #1a7f37; } .bad { color: #cf222e; }
+  small { opacity: .75; }
+</style>
+</head>
+<body>
+<h1>CORS Tester</h1>
+<p><small>This page's origin is <code id="origin"></code>. Enter a <strong>different</strong> service URL
+(or this service's other environment host) so the request is cross-origin. The gateway
+applies the Networking step's origins, headers and methods; this app sends no CORS headers itself.</small></p>
+
+<label>Target URL
+  <input id="url" placeholder="https://other-svc-org-prod.example.dev/echo">
+</label>
+<label>Method
+  <select id="method">
+    <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option>
+    <option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+  </select>
+</label>
+<label>Custom request headers (one per line, <code>Name: value</code>; non-simple headers force a preflight)
+  <textarea id="headers" rows="3">X-Test-Header: choreon</textarea>
+</label>
+<label>Body (sent for POST/PUT/PATCH)
+  <textarea id="body" rows="2">{"hello":"cors"}</textarea>
+</label>
+<label><input type="checkbox" id="creds" style="width:auto"> Send credentials (cookies / Authorization)</label>
+<button id="send">Send request</button>
+
+<h2 style="font-size:1rem">Result</h2>
+<pre id="out">Nothing sent yet.</pre>
+
+<script>
+  document.getElementById('origin').textContent = location.origin;
+  const out = document.getElementById('out');
+  document.getElementById('send').addEventListener('click', async () => {
+    const url = document.getElementById('url').value.trim();
+    const method = document.getElementById('method').value;
+    const headers = {};
+    for (const line of document.getElementById('headers').value.split('\n')) {
+      const i = line.indexOf(':');
+      if (i > 0) headers[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    }
+    const init = { method, headers, credentials: document.getElementById('creds').checked ? 'include' : 'omit' };
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      init.body = document.getElementById('body').value;
+      if (!headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/json';
+    }
+    out.className = '';
+    out.textContent = `→ ${method} ${url}\n${JSON.stringify(init, null, 2)}\n\n…`;
+    const started = performance.now();
+    try {
+      const res = await fetch(url, init);
+      const text = await res.text();
+      const exposed = {};
+      res.headers.forEach((v, k) => { exposed[k] = v; });
+      out.className = 'ok';
+      out.textContent += `\n\n✔ ${res.status} ${res.statusText} in ${Math.round(performance.now() - started)} ms` +
+        `\nResponse headers visible to JS:\n${JSON.stringify(exposed, null, 2)}` +
+        `\n\nBody:\n${text.slice(0, 4000)}`;
+    } catch (err) {
+      out.className = 'bad';
+      out.textContent += `\n\n✘ ${err.name}: ${err.message}` +
+        `\n\nA TypeError "Failed to fetch" here with a 2xx in the Network tab means the browser blocked it: ` +
+        `check the gateway's Access-Control-Allow-* headers for this origin, method and header set.`;
+    }
+  });
+</script>
+</body>
+</html>
